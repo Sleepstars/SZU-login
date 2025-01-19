@@ -13,7 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/vidar-team/srun-login/internal/crypotoutil"
+	"github.com/Sleepstars/SZU-login/internal/crypotoutil"
 )
 
 // Client is the client of srun.

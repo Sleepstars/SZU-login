@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/vidar-team/srun-login/internal/crypotoutil"
+	"github.com/Sleepstars/SZU-login/internal/crypotoutil"
 )
 
 type userInfo struct {

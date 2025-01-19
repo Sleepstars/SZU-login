@@ -9,7 +9,7 @@ import (
 
 	log "unknwon.dev/clog/v2"
 
-	"github.com/vidar-team/srun-login/pkg/srun"
+	"github.com/Sleepstars/SZU-login/pkg/srun"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 		panic(err)
 	}
 
-	host := flag.String("host", "https://login.hdu.edu.cn/", "")
+	host := flag.String("host", "https://net.szu.edu.cn/", "")
 	username := flag.String("username", "", "")
 	password := flag.String("password", "", "")
 	flag.Parse()

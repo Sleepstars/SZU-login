@@ -1,4 +1,4 @@
-module github.com/vidar-team/srun-login
+module github.com/Sleepstars/SZU-login
 
 go 1.16
 
