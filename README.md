@@ -17,6 +17,8 @@ go build cmd/srun-login.go
 ./srun-login --username=<REDACTED> --password=<REDACTED>
 ```
 
+欢迎查看我的博客观看详细使用方法：[Sleepstars 的记录室](https://blog.sleepstars.net/archives/shen-zhen-da-xue-jiao-xue-qu-xiao-yuan-wang-windows-zi-dong-deng-lu-xin-shou-xiang-xi-lie-er)
+
 ## License
 
 MIT License
