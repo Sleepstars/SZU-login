@@ -2,9 +2,9 @@ name: Go CI/CD
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 jobs:
   test:
@@ -12,122 +12,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version-file: 'go.mod'
-
+          go-version: '>=1.20'  # 使用较新的 Go 版本
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Run tests and generate XML report
-        run: go test -v -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total | awk '{print $3}' && go test -v -json ./... > test-results.json
-        
-      - name: Convert test results to JUnit XML
-        uses: jgoelen/go-junit-report@v1.4.0
-        with:
-          results_file: test-results.json
-          junit_file: unit-tests.xml
-
-      - name: Test Summary
-        uses: test-summary/action@v2
-        if: always()
-        with:
-          paths: unit-tests.xml
-
+      - name: Run tests
+        run: |
+          go test -v ./...
   build:
     name: Build
-    runs-on: ubuntu-latest
     needs: test
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         goos: [linux, windows, darwin]
         goarch: [amd64, arm64]
         exclude:
           - goos: darwin
-            goarch: amd64
+            goarch: arm64 # macOS arm64 构建需要 macOS runner
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version-file: 'go.mod'
-
+          go-version: '>=1.20'
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Build binaries
+      - name: Build binary
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o szu-login-${{ matrix.goos }}-${{ matrix.goarch }}
-      - name: Upload artifacts
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o szu-login-${{ matrix.goos }}-${{ matrix.goarch }} .
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: szu-login-binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: szu-login-${{ matrix.goos }}-${{ matrix.goarch }}
           path: szu-login-${{ matrix.goos }}-${{ matrix.goarch }}
-          
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+  build-macos-arm64:
+    name: Build macOS arm64
+    needs: test
+    runs-on: macos-latest
     steps:
-      - name: Download all workflow artifacts
-        uses: actions/download-artifact@v4
-        
-      - name: Create Release
-        uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
-          body: |
-            Automated release
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          go-version: '>=1.20'
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Build binary
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -o szu-login-darwin-arm64 .
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: szu-login-binaries-linux-amd64/szu-login-linux-amd64
-          asset_name: szu-login-linux-amd64
-          asset_content_type: application/octet-stream
-        
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: szu-login-binaries-linux-arm64/szu-login-linux-arm64
-          asset_name: szu-login-linux-arm64
-          asset_content_type: application/octet-stream    
-        
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: szu-login-binaries-windows-amd64/szu-login-windows-amd64
-          asset_name: szu-login-windows-amd64.exe
-          asset_content_type: application/octet-stream
-        
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: szu-login-binaries-windows-arm64/szu-login-windows-arm64
-          asset_name: szu-login-windows-arm64.exe
-          asset_content_type: application/octet-stream
-          
-      - name: Upload release assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: szu-login-binaries-darwin-arm64/szu-login-darwin-arm64
-          asset_name: szu-login-darwin-arm64
-          asset_content_type: application/octet-stream
+          name: szu-login-darwin-arm64
+          path: szu-login-darwin-arm64
