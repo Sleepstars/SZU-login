@@ -14,7 +14,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '>=1.20'  # 使用较新的 Go 版本
+          go-version: '>=1.20'
       - name: Check out code
         uses: actions/checkout@v4
       - name: Run tests
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Build binary
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o szu-login-${{ matrix.goos }}-${{ matrix.goarch }} .
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o szu-login-${{ matrix.goos }}-${{ matrix.goarch }} cmd/srun-login.go
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Build binary
         run: |
-          GOOS=darwin GOARCH=arm64 go build -o szu-login-darwin-arm64 .
+          GOOS=darwin GOARCH=arm64 go build -o szu-login-darwin-arm64 cmd/srun-login.go
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
