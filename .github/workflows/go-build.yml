@@ -19,14 +19,20 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Run tests
-        run: go test -v ./...
+      - name: Run tests and generate XML report
+        run: go test -v -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total | awk '{print $3}' && go test -v -json ./... > test-results.json
+        
+      - name: Convert test results to JUnit XML
+        uses: jgoelen/go-junit-report@v1.4.0
+        with:
+          results_file: test-results.json
+          junit_file: unit-tests.xml
 
       - name: Test Summary
         uses: test-summary/action@v2
         if: always()
         with:
-           paths: unit-tests.xml
+          paths: unit-tests.xml
 
   build:
     name: Build
