@@ -1,0 +1,33 @@
+# SZU-login 配置文件
+# 用户凭证
+credentials:
+  username: "123"  # 校园卡账号
+  password: "456"  # 校园卡密码
+
+# 网络环境配置
+network:
+  # 教学区网络配置（深澜系统）
+  teaching:
+    enabled: true  # 是否启用教学区登录
+    url: "https://net.szu.edu.cn/"
+    ip: "172.31.63.36"  # 可选：指定教学区登录服务器IP，防止DNS解析问题。留空则使用默认DNS解析
+    ac_id: "2"  # 认证ID，对于不同校区或网络环境可能需要调整
+  
+  # 宿舍区网络配置
+  dormitory:
+    enabled: true  # 是否启用宿舍区登录
+    url: "http://172.30.255.42:801/eportal/portal/login/"
+    ip: "172.30.255.42"  # 可选：指定宿舍区登录服务器IP，防止DNS解析问题。留空则使用默认DNS解析
+
+# 监控配置
+monitor:
+  enabled: true  # 是否启用持续监控
+  interval: 60   # 检查间隔（秒）
+  test_urls:     # 用于测试网络连通性的URL
+    - "https://www.baidu.com"
+
+# 调试配置
+debug:
+  enabled: true                 # 启用调试模式
+  verbose_network_detection: true  # 显示详细的网络检测信息
+  timeout: 10                  # 网络请求超时时间（秒）
