@@ -5,23 +5,24 @@
 package main
 
 import (
-	"context"
-	"flag"
-	"fmt"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"time"
+    "context"
+    "flag"
+    "fmt"
+    "io/ioutil"
+    "net"
+    "net/http"
+    "net/url"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "strings"
+    "time"
 
-	"gopkg.in/yaml.v2"
-	log "unknwon.dev/clog/v2"
+    "gopkg.in/yaml.v2"
+    log "unknwon.dev/clog/v2"
 
-	"github.com/Sleepstars/SZU-login/pkg/srun"
+    "github.com/Sleepstars/SZU-login/pkg/srun"
+    "github.com/Sleepstars/SZU-login/internal/netbind"
 )
 
 // Config 表示 config.yaml 文件的结构
@@ -97,8 +98,8 @@ func isNetworkAccessible(testURLs []string, config *Config) bool {
 		timeoutSeconds = config.Debug.Timeout
 	}
 
-	for _, url := range testURLs {
-		client := createHTTPClientWithIP("", time.Duration(timeoutSeconds)*time.Second)
+    for _, url := range testURLs {
+        client := createHTTPClientWithIP("", time.Duration(timeoutSeconds)*time.Second, "")
 		client.Timeout = 5 * time.Second
 		resp, err := client.Get(url)
 		if err == nil {
@@ -119,7 +120,7 @@ func TestNetworkEndpoint(urlStr string, ip string, config *Config) bool {
 	}
 
 	// 如果指定了IP，则使用它直接连接
-	client := createHTTPClientWithIP(ip, time.Duration(timeoutSeconds)*time.Second)
+    client := createHTTPClientWithIP(ip, time.Duration(timeoutSeconds)*time.Second, "")
 
 	if config.Debug.Enabled && config.Debug.VerboseNetworkDetection {
 		log.Info("[调试] 测试网络端点: %s (IP: %s)", urlStr, ip)
@@ -294,7 +295,7 @@ func LoginDormitoryArea(config *Config) error {
 	if config.Debug.Enabled && config.Debug.Timeout > 0 {
 		timeoutSeconds = config.Debug.Timeout
 	}
-	client := createHTTPClientWithIP(config.Network.Dormitory.IP, time.Duration(timeoutSeconds)*time.Second)
+    client := createHTTPClientWithIP(config.Network.Dormitory.IP, time.Duration(timeoutSeconds)*time.Second, "")
 
 	resp, err := client.Get(requestURL)
 	if err != nil {
@@ -419,40 +420,41 @@ func ConcurrentLogin(config *Config, networks map[string]bool) bool {
 }
 
 // createHTTPClientWithIP 创建一个将请求解析到特定IP的HTTP客户端（如果提供了IP）
-func createHTTPClientWithIP(ip string, timeout time.Duration) *http.Client {
-	client := &http.Client{
-		Timeout: timeout,
-	}
+func createHTTPClientWithIP(ip string, timeout time.Duration, iface string) *http.Client {
+    client := &http.Client{
+        Timeout: timeout,
+    }
 
-	// 如果指定了IP，使用带有自定义拨号器的Transport，该拨号器解析到该IP
-	if ip != "" {
-		transport := &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// 从addr中提取主机和端口
-				_, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					// 如果地址中没有端口，使用默认的HTTP/HTTPS端口
-					if strings.Contains(err.Error(), "missing port") {
-						if strings.HasPrefix(addr, "https") {
-							port = "443"
-						} else {
-							port = "80"
-						}
-					} else {
-						return nil, err
-					}
-				}
+    // 如果指定了IP，使用带有自定义拨号器的Transport，该拨号器解析到该IP
+    var dialer = &net.Dialer{}
+    // 绑定到指定网卡（仅 Linux 生效，其他平台为 no-op）
+    if iface != "" {
+        dialer.Control = netbind.ControlBindToDevice(iface)
+    }
 
-				// 使用自定义IP而不是解析主机名
-				dialer := &net.Dialer{}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-			},
-		}
+    transport := &http.Transport{
+        DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+            target := addr
+            if ip != "" {
+                // 从addr中提取端口
+                _, port, err := net.SplitHostPort(addr)
+                if err != nil {
+                    // 如果地址中没有端口，回退到常见端口（根据是否可能为https无法可靠判断，这里默认80）
+                    if strings.Contains(err.Error(), "missing port") {
+                        port = "80"
+                    } else {
+                        return nil, err
+                    }
+                }
+                target = net.JoinHostPort(ip, port)
+            }
+            return dialer.DialContext(ctx, network, target)
+        },
+    }
 
-		client.Transport = transport
-	}
+    client.Transport = transport
 
-	return client
+    return client
 }
 
 func main() {
@@ -468,10 +470,20 @@ func main() {
 	cmdPassword := flag.String("password", "", "密码（覆盖配置）")
 	cmdTeachingIP := flag.String("teaching-ip", "", "教学区服务器IP（覆盖配置）")
 	cmdDormitoryIP := flag.String("dormitory-ip", "", "宿舍区服务器IP（覆盖配置）")
-	flag.Parse()
+    // 支持通过命令行参数指定拨号网卡，例如 -i eth1 或 --interface=eth1
+    cmdInterface := flag.String("i", "", "要绑定的网卡名，例如 eth1（仅 Linux）")
+    // 兼容长参数名
+    cmdInterfaceLong := flag.String("interface", "", "要绑定的网卡名，例如 eth1（仅 Linux）")
+    flag.Parse()
 
-	// 加载配置
-	config, err := LoadConfig()
+    // 处理 interface 参数别名
+    iface := *cmdInterface
+    if iface == "" && *cmdInterfaceLong != "" {
+        iface = *cmdInterfaceLong
+    }
+
+    // 加载配置
+    config, err := LoadConfig()
 	if err != nil {
 		log.Warn("加载配置失败: %v", err)
 		log.Warn("将尝试使用提供的命令行参数（如果有）")
@@ -505,10 +517,10 @@ func main() {
 		config.Monitor.Enabled = false
 	}
 
-	// 如果提供了命令行参数，则覆盖配置
-	if *cmdUsername != "" {
-		config.Credentials.Username = *cmdUsername
-	}
+    // 如果提供了命令行参数，则覆盖配置
+    if *cmdUsername != "" {
+        config.Credentials.Username = *cmdUsername
+    }
 	if *cmdPassword != "" {
 		config.Credentials.Password = *cmdPassword
 	}
@@ -527,8 +539,11 @@ func main() {
 		config.Network.Dormitory.IP = *cmdDormitoryIP
 	}
 
-	log.Info("深圳大学网络登录工具")
-	log.Info("用户名: %s", config.Credentials.Username)
+    log.Info("深圳大学网络登录工具")
+    log.Info("用户名: %s", config.Credentials.Username)
+    if iface != "" {
+        log.Info("已请求绑定到网卡: %s", iface)
+    }
 
 	// 单次登录或持续监控
 	if config.Monitor.Enabled {
@@ -536,10 +551,10 @@ func main() {
 		log.Info("每 %d 秒检查一次互联网连接", config.Monitor.Interval)
 
 		// 首次检查
-		if isNetworkAccessible(config.Monitor.TestURLs, config) {
-			log.Trace("互联网可访问，无需登录")
-		} else {
-			log.Info("互联网不可访问，检查校园网络...")
+            if isNetworkAccessible(config.Monitor.TestURLs, config) {
+                log.Trace("互联网可访问，无需登录")
+            } else {
+                log.Info("互联网不可访问，检查校园网络...")
 
 			// 检测校园网络
 			networks := DetectCampusNetwork(config)
@@ -549,7 +564,7 @@ func main() {
 				log.Info("检测到校园网络，尝试登录...")
 
 				// 尝试并行登录
-				loggedIn := ConcurrentLogin(config, networks)
+                loggedIn := ConcurrentLoginWithInterface(config, networks, iface)
 
 				if !loggedIn {
 					log.Error("所有登录尝试都失败了")
@@ -562,10 +577,10 @@ func main() {
 		// 持续监控
 		for {
 			// 如果已经连接到互联网，则跳过登录
-			if isNetworkAccessible(config.Monitor.TestURLs, config) {
-				log.Trace("互联网可访问，无需登录")
-				time.Sleep(time.Duration(config.Monitor.Interval) * time.Second)
-				continue
+            if isNetworkAccessible(config.Monitor.TestURLs, config) {
+                log.Trace("互联网可访问，无需登录")
+                time.Sleep(time.Duration(config.Monitor.Interval) * time.Second)
+                continue
 			}
 
 			log.Info("互联网不可访问，检查校园网络...")
@@ -578,7 +593,7 @@ func main() {
 				log.Info("检测到校园网络，尝试登录...")
 
 				// 尝试并行登录
-				loggedIn := ConcurrentLogin(config, networks)
+                loggedIn := ConcurrentLoginWithInterface(config, networks, iface)
 
 				if !loggedIn {
 					log.Error("所有登录尝试都失败了")
@@ -600,7 +615,7 @@ func main() {
 			log.Info("检测到校园网络，尝试登录...")
 
 			// 尝试并行登录
-			loggedIn := ConcurrentLogin(config, networks)
+            loggedIn := ConcurrentLoginWithInterface(config, networks, iface)
 
 			if !loggedIn {
 				log.Error("所有登录尝试都失败了")
@@ -609,4 +624,110 @@ func main() {
 			log.Error("未检测到校园网络。您是否已连接到深大网络？")
 		}
 	}
+}
+
+// ConcurrentLoginWithInterface 与 ConcurrentLogin 类似，但允许传入需要绑定的网卡名
+func ConcurrentLoginWithInterface(config *Config, networks map[string]bool, iface string) bool {
+    // 使用通道收集并发登录结果
+    teachingResult := make(chan error, 1)
+    dormitoryResult := make(chan error, 1)
+
+    // 并行尝试登录
+    if networks["teaching"] {
+        go func() {
+            // 使用 srun 客户端登录教学区
+            client := srun.NewClient(config.Network.Teaching.URL,
+                config.Credentials.Username,
+                config.Credentials.Password)
+
+            // 设置自定义 IP（如果配置了）
+            if config.Network.Teaching.IP != "" {
+                client.SetServerIP(config.Network.Teaching.IP)
+            }
+            // 设置 AC-ID（如果配置了）
+            if config.Network.Teaching.AcID != "" {
+                client.SetAcID(config.Network.Teaching.AcID)
+            }
+            // 绑定到指定网卡（如果提供）
+            if iface != "" {
+                client.SetInterface(iface)
+            }
+
+            challengeResp, err := client.GetChallenge()
+            if err != nil {
+                teachingResult <- fmt.Errorf("获取challenge失败: %v", err)
+                return
+            }
+            challenge := challengeResp.Challenge
+            _, err = client.Portal(challenge)
+            if err != nil {
+                teachingResult <- fmt.Errorf("portal调用失败: %v", err)
+                return
+            }
+            teachingResult <- nil
+        }()
+    } else {
+        // 未检测到，立即发送错误
+        teachingResult <- fmt.Errorf("未检测到教学区网络")
+    }
+
+    if networks["dormitory"] {
+        go func() {
+            // 宿舍区登录使用 HTTP GET（可绑定网卡 + 可选指定 IP）
+            dormURL := config.Network.Dormitory.URL
+            params := url.Values{}
+            params.Add("user_account", config.Credentials.Username)
+            params.Add("user_password", config.Credentials.Password)
+            requestURL := dormURL + "?" + params.Encode()
+
+            timeoutSeconds := 10
+            if config.Debug.Enabled && config.Debug.Timeout > 0 {
+                timeoutSeconds = config.Debug.Timeout
+            }
+            client := createHTTPClientWithIP(config.Network.Dormitory.IP, time.Duration(timeoutSeconds)*time.Second, iface)
+
+            resp, err := client.Get(requestURL)
+            if err != nil {
+                dormitoryResult <- fmt.Errorf("登录宿舍区网络失败: %v", err)
+                return
+            }
+            defer resp.Body.Close()
+            body, err := ioutil.ReadAll(resp.Body)
+            if err != nil {
+                dormitoryResult <- fmt.Errorf("读取响应失败: %v", err)
+                return
+            }
+            if strings.Contains(string(body), "success") || resp.StatusCode == http.StatusOK {
+                dormitoryResult <- nil
+                return
+            }
+            dormitoryResult <- fmt.Errorf("登录宿舍区网络失败")
+        }()
+    } else {
+        // 未检测到，立即发送错误
+        dormitoryResult <- fmt.Errorf("未检测到宿舍区网络")
+    }
+
+    // 等待结果
+    teachingErr := <-teachingResult
+    dormitoryErr := <-dormitoryResult
+
+    // 检查结果
+    teachingSuccess := teachingErr == nil
+    dormitorySuccess := dormitoryErr == nil
+
+    if teachingSuccess {
+        log.Info("教学区登录成功")
+    } else if networks["teaching"] {
+        log.Error("教学区登录失败: %v", teachingErr)
+    }
+
+    if dormitorySuccess {
+        log.Info("宿舍区登录成功")
+    } else if networks["dormitory"] {
+        log.Error("宿舍区登录失败: %v", dormitoryErr)
+    }
+
+    // 如果任何登录成功，则返回true
+    return teachingSuccess || dormitorySuccess
 }

@@ -67,6 +67,9 @@ go build cmd/srun-login.go
 
 # 指定服务器IP地址
 ./srun-login --username=<REDACTED> --password=<REDACTED> --teaching-ip=198.18.6.157
+
+# 指定拨号网卡（Linux/OpenWRT）
+./srun-login -i eth1 --username=<REDACTED> --password=<REDACTED>
 ```
 
 ### 同时支持的命令行参数
@@ -77,6 +80,7 @@ go build cmd/srun-login.go
 --password          指定密码
 --teaching-ip       指定教学区服务器IP
 --dormitory-ip      指定宿舍区服务器IP
+--interface, -i     绑定到指定网卡（如 eth1），仅 Linux 有效
 ```
 
 欢迎查看我的博客观看详细使用方法：[Sleepstars 的记录室](https://blog.sleepstars.net/archives/shen-zhen-da-xue-jiao-xue-qu-xiao-yuan-wang-windows-zi-dong-deng-lu-xin-shou-xiang-xi-lie-er)

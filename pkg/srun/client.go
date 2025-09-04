@@ -5,53 +5,52 @@
 package srun
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net"
+    "net/http"
+    "net/url"
+    "strings"
+    "time"
 
-	"github.com/pkg/errors"
+    "github.com/pkg/errors"
 
-	"github.com/Sleepstars/SZU-login/internal/crypotoutil"
+    "github.com/Sleepstars/SZU-login/internal/crypotoutil"
+    "github.com/Sleepstars/SZU-login/internal/netbind"
 )
 
 // Client is the client of srun.
 type Client struct {
-	host        string
-	username    string
-	password    string
-	serverIP    string  // Custom server IP address to bypass DNS
+    host        string
+    username    string
+    password    string
+    serverIP    string  // Custom server IP address to bypass DNS
+    iface       string  // Network interface to bind (Linux only)
 
 	ip   string
 	acID string
 	typ  string
 	n    string
 
-	httpClient *http.Client
+    httpClient *http.Client
 }
 
 // NewClient returns a new srun client with the provided host, username and password.
 func NewClient(host, username, password string) *Client {
-	client := &Client{
-		host:     host,
-		username: username,
-		password: password,
+    client := &Client{
+        host:     host,
+        username: username,
+        password: password,
 
-		acID: "0",
-		typ:  "1",
-		n:    "200",
-		serverIP: "",
-	}
-	
-	// Initialize with a default HTTP client
-	client.httpClient = &http.Client{}
-	
-	return client
+        acID: "0",
+        typ:  "1",
+        n:    "200",
+        serverIP: "",
+    }
+    client.updateHTTPClient()
+    return client
 }
 
 type ChallengeResponse struct {
@@ -75,43 +74,46 @@ func (c *Client) SetAcID(acID string) {
 
 // SetServerIP sets a custom server IP to use instead of DNS resolution
 func (c *Client) SetServerIP(serverIP string) {
-	c.serverIP = serverIP
-	
-	// If a server IP is specified, create a custom HTTP client that uses it
-	if serverIP != "" {
-		transport := &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// Extract host and port from addr
-				_, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					// If no port in address, use default HTTP/HTTPS ports
-					if strings.Contains(err.Error(), "missing port") {
-						if strings.HasPrefix(addr, "https") {
-							port = "443"
-						} else {
-							port = "80"
-						}
-					} else {
-						return nil, err
-					}
-				}
-				
-				// Use the custom IP instead of resolving the hostname
-				dialer := &net.Dialer{}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(serverIP, port))
-			},
-		}
-		
-		c.httpClient = &http.Client{
-			Transport: transport,
-			Timeout:   10 * time.Second,
-		}
-	} else {
-		// Use the default client
-		c.httpClient = &http.Client{
-			Timeout: 10 * time.Second,
-		}
-	}
+    c.serverIP = serverIP
+    c.updateHTTPClient()
+}
+
+// SetInterface sets a network interface name to bind outbound connections.
+// Works on Linux (SO_BINDTODEVICE). No-op on other platforms.
+func (c *Client) SetInterface(iface string) {
+    c.iface = iface
+    c.updateHTTPClient()
+}
+
+func (c *Client) updateHTTPClient() {
+    dialer := &net.Dialer{}
+    if c.iface != "" {
+        dialer.Control = netbind.ControlBindToDevice(c.iface)
+    }
+
+    transport := &http.Transport{
+        DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+            // If serverIP is set, replace host with it and keep the original port
+            if c.serverIP != "" {
+                _, port, err := net.SplitHostPort(addr)
+                if err != nil {
+                    if strings.Contains(err.Error(), "missing port") {
+                        // Fall back to 80 if port missing
+                        port = "80"
+                    } else {
+                        return nil, err
+                    }
+                }
+                return dialer.DialContext(ctx, network, net.JoinHostPort(c.serverIP, port))
+            }
+            return dialer.DialContext(ctx, network, addr)
+        },
+    }
+
+    c.httpClient = &http.Client{
+        Transport: transport,
+        Timeout:   10 * time.Second,
+    }
 }
 
 // GetChallenge requests srun to get a challenge code.
