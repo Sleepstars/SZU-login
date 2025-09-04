@@ -17,6 +17,10 @@ jobs:
           go-version: '>=1.20'
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Go mod tidy (verify clean)
+        run: |
+          go mod tidy
+          git diff --exit-code || (echo 'go.mod / go.sum 不干净，请本地运行 go mod tidy 并提交' && exit 1)
       - name: Run tests
         run: |
           go test -v ./...
@@ -38,6 +42,10 @@ jobs:
           go-version: '>=1.20'
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Go mod tidy (verify clean)
+        run: |
+          go mod tidy
+          git diff --exit-code || (echo 'go.mod / go.sum 不干净，请本地运行 go mod tidy 并提交' && exit 1)
       - name: Build binary
         run: |
           if [ "${{ matrix.goos }}" = "windows" ]; then
@@ -61,6 +69,10 @@ jobs:
           go-version: '>=1.20'
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Go mod tidy (verify clean)
+        run: |
+          go mod tidy
+          git diff --exit-code || (echo 'go.mod / go.sum 不干净，请本地运行 go mod tidy 并提交' && exit 1)
       - name: Build binary
         run: |
           GOOS=darwin GOARCH=arm64 go build -o szu-login-darwin-arm64 cmd/srun-login.go
